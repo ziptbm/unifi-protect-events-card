@@ -36,7 +36,19 @@ The card's type is `custom:camera-events-card`, as shown in the examples below.
 
 ### 2. Create the calendar
 
-Settings → Devices & services → **Add integration** → **Local Calendar**, and name it `Camera Events`. That creates `calendar.camera_events`.
+Detections are stored as events in a calendar, which the card then reads.
+
+[![Add Local Calendar](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=local_calendar)
+
+1. Use the button above, or go to Settings → Devices & services → **Add integration** and search for **Local Calendar**
+2. Calendar name: `Camera Events` (exactly that)
+3. Check it worked: Settings → Devices & services → **Entities**, search `calendar.camera_events`
+
+Used a different name? Find its entity ID in step 3, pick that calendar in the blueprint, and set `calendar_entity` on the card.
+
+**Good to know**
+- Every detection becomes a 1-minute event, so this calendar fills up fast. In the **Calendar** sidebar, untick it so it doesn't crowd your real calendars. The card isn't affected.
+- Old events stay in the calendar. That's fine: the card only loads the dates you're viewing.
 
 ### 3. Start logging detections
 
