@@ -1,0 +1,107 @@
+blueprint:
+  name: UniFi Protect Events Card - log detections
+  description: >
+    Writes each UniFi Protect smart detection (and doorbell ring) to a calendar,
+    in the format the UniFi Protect Events Card reads.
+
+
+    **Before you start:** create a calendar with the Local Calendar integration
+    (Settings → Devices & services → Add integration → Local Calendar), for
+    example named `Camera Events`.
+
+
+    **Which entities to pick:** each camera's **Smart detection** event entity
+    (for example `event.driveway_smart_detection`), plus the **Doorbell** event
+    entity if you have a G4/G5 doorbell.
+
+
+    Every event is logged as an alert (`Status: LEAD`). Grouping and suppression
+    are not part of this blueprint; see the README if you want to add them.
+  domain: automation
+  source_url: https://github.com/ziptbm/unifi-protect-events-card/blob/main/blueprints/automation/camera-events-card/log-unifi-protect-detections.yaml
+  input:
+    detection_entities:
+      name: Detection event entities
+      description: The Smart detection (and Doorbell) event entities of the cameras to log.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - integration: unifiprotect
+              domain: event
+    calendar_entity:
+      name: Calendar
+      description: The calendar the card reads from.
+      selector:
+        entity:
+          filter:
+            - domain: calendar
+    detection_types:
+      name: Detection types to log
+      default:
+        - person
+        - vehicle
+        - ring
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Person
+              value: person
+            - label: Vehicle
+              value: vehicle
+            - label: Animal
+              value: animal
+            - label: Package
+              value: package
+            - label: License plate
+              value: license_plate
+            - label: Face
+              value: face
+            - label: Doorbell ring
+              value: ring
+
+mode: queued
+max: 20
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input detection_entities
+    not_to:
+      - unavailable
+      - unknown
+
+variables:
+  calendar_entity: !input calendar_entity
+  detection_types: !input detection_types
+  event_type: "{{ trigger.to_state.attributes.event_type | default('') }}"
+  event_id: "{{ trigger.to_state.attributes.event_id | default('') }}"
+  nvr_id: "{{ config_entry_id(trigger.entity_id) or '' }}"
+  device: "{{ device_id(trigger.entity_id) }}"
+  camera_name: >-
+    {% set name = (device_attr(device, 'name_by_user') or device_attr(device, 'name'))
+       if device else state_attr(trigger.entity_id, 'friendly_name') %}
+    {{ (name or 'Camera') | replace(',', ' ') }}
+  summary: >-
+    {{ 'Doorbell' if event_type == 'ring' else event_type | replace('_', ' ') | title }}
+
+conditions:
+  - condition: template
+    value_template: "{{ event_type in detection_types and event_id != '' and nvr_id != '' }}"
+
+actions:
+  - action: calendar.create_event
+    target:
+      entity_id: "{{ calendar_entity }}"
+    data:
+      summary: "{{ summary }}"
+      location: "/api/unifiprotect/thumbnail/{{ nvr_id }}/{{ event_id }},{{ camera_name }}"
+      description: |-
+        Status: LEAD
+        Camera: {{ camera_name }}
+        Detection: {{ summary | lower }}
+        Time: {{ now().strftime('%H:%M:%S') }}
+        Source: {{ trigger.entity_id }}
+      start_date_time: "{{ now().isoformat() }}"
+      end_date_time: "{{ (now() + timedelta(minutes=1)).isoformat() }}"

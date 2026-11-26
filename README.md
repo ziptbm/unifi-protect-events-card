@@ -1,0 +1,134 @@
+# UniFi Protect Events Card
+
+A Home Assistant dashboard card that shows your **UniFi Protect** detections as a timeline: person, vehicle, animal, package and doorbell events, each with its thumbnail. Tap an event for a larger image, a full-frame snapshot and the video clip.
+
+- Timeline grouped by Today, Yesterday and older dates
+- Filters by camera, detection type and date range (your choices are remembered on each device)
+- Popup with the detection crop, a full-frame snapshot and inline video playback
+- Optional arrival/departure context ("Alex arriving") from your `person` entities
+- Refreshes itself every minute
+
+The card's type is `custom:camera-events-card`, as shown in the examples below.
+
+## Requirements
+
+- Home Assistant with the **UniFi Protect** integration. The card reads thumbnails and video from it, so other camera systems won't work.
+- A **calendar** to hold the events, created with the built-in **Local Calendar** integration.
+- An automation that writes detections to that calendar. The included blueprint does this for you.
+
+## Install
+
+### 1. Add the card
+
+**With HACS (recommended)**
+
+1. HACS → ⋮ (top right) → **Custom repositories**
+2. Repository: `https://github.com/ziptbm/unifi-protect-events-card`, Type: **Dashboard**, then **Add**
+3. Search HACS for **UniFi Protect Events Card**, then **Download**
+4. Reload your browser when it asks
+
+**Manual**
+
+1. Download `camera-events-card.js` from this repo into `/config/www/`
+2. Settings → Dashboards → ⋮ → **Resources** → **Add resource**
+   - URL: `/local/camera-events-card.js`
+   - Type: **JavaScript module**
+
+### 2. Create the calendar
+
+Settings → Devices & services → **Add integration** → **Local Calendar**, and name it `Camera Events`. That creates `calendar.camera_events`.
+
+### 3. Start logging detections
+
+[![Import the blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fziptbm%2Funifi-protect-events-card%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fcamera-events-card%2Flog-unifi-protect-detections.yaml)
+
+Import the blueprint with the button above (or Settings → Automations & scenes → Blueprints → **Import blueprint**, then paste the blueprint's URL). Then create an automation from it:
+
+- **Detection event entities:** each camera's **Smart detection** entity (for example `event.driveway_smart_detection`), plus the **Doorbell** entity if you have a UniFi doorbell
+- **Calendar:** `calendar.camera_events`
+- **Detection types:** person, vehicle and doorbell are selected by default
+
+Walk past a camera, and the event should show up in the calendar within a few seconds.
+
+### 4. Add the card to a dashboard
+
+Edit dashboard → **Add card** → search **UniFi Protect Events Card**, or paste this:
+
+```yaml
+type: custom:camera-events-card
+calendar_entity: calendar.camera_events
+```
+
+The card works best on its own view, or in a tall section.
+
+## Options
+
+| Option | Default | What it does |
+|---|---|---|
+| `calendar_entity` | `calendar.camera_events` | Calendar the events are read from |
+| `max_events` | `200` | Most groups to show at once |
+| `default_view_mode` | `alerts` | Starting view: `alerts`, `groups` or `all`. Only used until you pick one on the card. |
+| `camera_entities` | auto | Maps a camera name to its camera entity, for the full-frame snapshot. Usually not needed: the card finds `<Camera> High resolution channel` by itself. |
+| `person_entities` | every `person.*` | People to check for arrivals and departures. Give a list to limit it, or `false` to turn it off. |
+
+A fuller example:
+
+```yaml
+type: custom:camera-events-card
+calendar_entity: calendar.camera_events
+max_events: 100
+default_view_mode: all
+camera_entities:
+  Driveway: camera.driveway_high_resolution_channel
+person_entities:
+  - person.alex
+  - person.sam
+```
+
+## Calendar event format
+
+The blueprint writes events in the format below. If you write your own automation instead, follow it:
+
+```yaml
+summary: Person            # Person, Vehicle, Animal, Package or Doorbell
+location: /api/unifiprotect/thumbnail/<nvr_id>/<event_id>,<Camera name>
+description: |-
+  Status: LEAD
+  Camera: Driveway
+  Detection: person
+  Time: 14:30:45
+```
+
+- `nvr_id` is `config_entry_id(<any UniFi Protect entity>)`
+- `event_id` is the `event_id` attribute of the camera's Smart detection (or Doorbell) event entity
+- The camera name must not contain a comma
+
+### Advanced: grouping and suppression
+
+The card can also group related events: someone walks past three cameras, and you see one alert instead of three. To use it, your automation decides which event is the alert (`Status: LEAD`) and marks the rest `Status: SUPPRESSED`, adding these lines:
+
+```
+LeadTime: <start time of the LEAD event, ISO format>
+SuppressReasons: path_grouping,person_arrival   # or none
+```
+
+Reasons the card turns into a group label: `outdoor_activity`, `person_arrival`, `person_departure` and `vehicle_active`. Any other reason is allowed but gets no label.
+
+Suppressed events with the same `LeadTime` appear under their LEAD event in the **Groups** and **All** views. The **Alerts** view shows LEAD events only. The blueprint logs everything as LEAD, so it never groups.
+
+## Troubleshooting
+
+- **Nothing shows up.** Check that the calendar has events in it (open it in the Calendar panel). If it's empty, check the automation's trace.
+- **The thumbnail is missing.** UniFi Protect sometimes takes a few seconds to produce a thumbnail. Tap **Retry** in the popup.
+- **The video won't load.** The clip only exists once the detection has ended. Try again a minute later.
+- **"Full frame unavailable."** Add the camera to `camera_entities`, using the exact name the card shows.
+
+## Development
+
+```bash
+node --test tests/
+```
+
+## License
+
+MIT
