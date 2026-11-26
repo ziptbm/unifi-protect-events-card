@@ -11,16 +11,21 @@
  *   person_entities:          # optional; default = every person.* entity, false = off
  *     - person.alex
  *
- * Version: 1.12.0
+ * Version: 1.12.1
  * Last Updated: 2026-11-25
+ *
+ * Changes in 1.12.1:
+ * - Fix: date button text was black on dark themes
+ * - The card editor now opens Home Assistant's code editor instead of a
+ *   read-only help panel
  *
  * Changes in 1.12.0:
  * - First public release, as UniFi Protect Events Card
  * - Icons and colours for animal and package detections
  * - Full-frame lookup falls back to UniFi Protect's "<Camera> High resolution
  *   channel" naming, so camera_entities is rarely needed
- * - New person_entities option; arrival/departure context no longer uses
- *   hardcoded household names (default: every person.* entity)
+ * - New person_entities option for arrival/departure context
+ *   (default: every person.* entity)
  *
  * Changes in 1.11.3:
  * - Show safe media-download errors and per-image retry in the popup
@@ -206,10 +211,6 @@ class CameraEventsCard extends HTMLElement {
 
   connectedCallback() {
     window.addEventListener('resize', this._boundResizeHandler);
-  }
-
-  static getConfigElement() {
-    return document.createElement('camera-events-card-editor');
   }
 
   static getStubConfig() {
@@ -1349,7 +1350,7 @@ class CameraEventsCard extends HTMLElement {
         .nav-btn { background:none; border:none; cursor:pointer; color:var(--primary-text-color); padding:6px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
         .nav-btn:hover { background:var(--secondary-background-color); }
         .nav-btn ha-icon { --mdc-icon-size:20px; }
-        .date-label { padding:6px 12px; background:var(--secondary-background-color); border-radius:8px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; }
+        .date-label { padding:6px 12px; background:var(--secondary-background-color); color:var(--primary-text-color); border:none; font:inherit; border-radius:8px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; }
         .date-label:hover { background:var(--primary-color); color:#fff; }
         .date-label ha-icon { --mdc-icon-size:18px; }
 
@@ -1596,24 +1597,7 @@ class CameraEventsCard extends HTMLElement {
   getCardSize() { return 4; }
 }
 
-class CameraEventsCardEditor extends HTMLElement {
-  setConfig(config) { this._config = config; }
-  set hass(hass) { this._hass = hass; if (!this._rendered) { this._render(); this._rendered = true; } }
-  _render() {
-    this.innerHTML = `<div style="padding:16px;"><p><strong>UniFi Protect Events Card v1.12.0</strong></p>
-      <pre style="background:var(--secondary-background-color);padding:12px;border-radius:4px;font-size:12px;">type: custom:camera-events-card
-calendar_entity: calendar.camera_events
-max_events: 200
-default_view_mode: alerts  # alerts, groups, or all
-camera_entities:            # optional, for full-frame snapshots
-  Driveway: camera.driveway_high_resolution_channel
-person_entities:            # optional; false turns it off
-  - person.alex</pre><p>See the README on GitHub for all options.</p></div>`;
-  }
-}
-
 customElements.define('camera-events-card', CameraEventsCard);
-customElements.define('camera-events-card-editor', CameraEventsCardEditor);
 window.customCards = window.customCards || [];
 window.customCards.push({ type: 'camera-events-card', name: 'UniFi Protect Events Card', description: 'UniFi Protect detections with thumbnails, snapshots and video', preview: true });
-console.info('%c CAMERA-EVENTS-CARD %c v1.12.0 ', 'color:white;background:#3498db;font-weight:bold;', 'color:#3498db;background:white;font-weight:bold;');
+console.info('%c CAMERA-EVENTS-CARD %c v1.12.1 ', 'color:white;background:#3498db;font-weight:bold;', 'color:#3498db;background:white;font-weight:bold;');

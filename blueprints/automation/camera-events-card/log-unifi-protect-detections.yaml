@@ -54,10 +54,6 @@ blueprint:
               value: animal
             - label: Package
               value: package
-            - label: License plate
-              value: license_plate
-            - label: Face
-              value: face
             - label: Doorbell ring
               value: ring
 
@@ -68,6 +64,7 @@ max_exceeded: silent
 triggers:
   - trigger: state
     entity_id: !input detection_entities
+    not_from: unavailable
     not_to:
       - unavailable
       - unknown
@@ -77,6 +74,8 @@ variables:
   detection_types: !input detection_types
   event_type: "{{ trigger.to_state.attributes.event_type | default('') }}"
   event_id: "{{ trigger.to_state.attributes.event_id | default('') }}"
+  previous_event_id: >-
+    {{ trigger.from_state.attributes.event_id | default('') if trigger.from_state else '' }}
   nvr_id: "{{ config_entry_id(trigger.entity_id) or '' }}"
   device: "{{ device_id(trigger.entity_id) }}"
   camera_name: >-
@@ -88,7 +87,11 @@ variables:
 
 conditions:
   - condition: template
-    value_template: "{{ event_type in detection_types and event_id != '' and nvr_id != '' }}"
+    # previous_event_id check: a restart or integration reload re-announces the
+    # last detection with the same ID; log each detection once.
+    value_template: >-
+      {{ event_type in detection_types and event_id != '' and nvr_id != ''
+         and event_id != previous_event_id }}
 
 actions:
   - action: calendar.create_event

@@ -6,13 +6,20 @@ A Home Assistant dashboard card that shows your **UniFi Protect** detections as 
 - Filters by camera, detection type and date range (your choices are remembered on each device)
 - Popup with the detection crop, a full-frame snapshot and inline video playback
 - Optional arrival/departure context ("Alex arriving") from your `person` entities
-- Refreshes itself every minute
+- Refreshes every few minutes, and holds off while you're scrolling
+
+| Timeline | Tap an event | Load the clip |
+|:---:|:---:|:---:|
+| <img src="images/card.png" alt="The card's timeline of detections" width="260"> | <img src="images/popup.png" alt="Event popup with detection crop and full frame" width="260"> | <img src="images/video.png" alt="Event popup playing the video clip" width="260"> |
+
+<sub>Screenshots use illustrated sample images. With your cameras you'll see real snapshots.</sub>
 
 The card's type is `custom:camera-events-card`, as shown in the examples below.
 
 ## Requirements
 
 - Home Assistant with the **UniFi Protect** integration. The card reads thumbnails and video from it, so other camera systems won't work.
+- Cameras with **smart detections** turned on in UniFi Protect. Each one gets an `event.<camera>_smart_detection` entity in HA; if you don't see those, the blueprint has nothing to log.
 - A **calendar** to hold the events, created with the built-in **Local Calendar** integration.
 - An automation that writes detections to that calendar. The included blueprint does this for you.
 
@@ -64,7 +71,7 @@ Walk past a camera, and the event should show up in the calendar within a few se
 
 ### 4. Add the card to a dashboard
 
-Edit dashboard → **Add card** → search **UniFi Protect Events Card**, or paste this:
+Edit dashboard → **Add card** → search **UniFi Protect Events Card**. To change options, use **Show code editor** in the card dialog, or paste this:
 
 ```yaml
 type: custom:camera-events-card
@@ -78,7 +85,7 @@ The card works best on its own view, or in a tall section.
 | Option | Default | What it does |
 |---|---|---|
 | `calendar_entity` | `calendar.camera_events` | Calendar the events are read from |
-| `max_events` | `200` | Most groups to show at once |
+| `max_events` | `200` | The most groups the card will load. It shows 50 at a time, with **Load more** for the rest. |
 | `default_view_mode` | `alerts` | Starting view: `alerts`, `groups` or `all`. Only used until you pick one on the card. |
 | `camera_entities` | auto | Maps a camera name to its camera entity, for the full-frame snapshot. Usually not needed: the card finds `<Camera> High resolution channel` by itself. |
 | `person_entities` | every `person.*` | People to check for arrivals and departures. Give a list to limit it, or `false` to turn it off. |
