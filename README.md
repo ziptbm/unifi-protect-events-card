@@ -69,6 +69,36 @@ Import the blueprint with the button above (or Settings → Automations & scenes
 
 Walk past a camera, and the event should show up in the calendar within a few seconds.
 
+#### Optional: phone alerts, grouping and arrivals
+
+The blueprint has three optional sections. Each one is off until you fill it in.
+
+| Section | What it does | How to turn it on |
+|---|---|---|
+| **Phone alerts** | Sends a notification for each alert, with the camera name as the title and the detection thumbnail as the image. Tapping it opens the dashboard path you give. | Pick one or more phones running the Home Assistant Companion app. |
+| ↳ Cooldown | After a camera alerts, it sends no more phone alerts for this many minutes. Its detections are still logged. | Set minutes above 0. |
+| **Grouping** | A detection within N minutes of the last alert is logged under that alert, not as a new one, and sends no notification. Someone walking past three cameras gives you one alert. | Set the quiet period above 0 (3 is a good start). |
+| **Household arrival** | When one of the chosen people has come home in the last few minutes, detections are logged but not as alerts, and send no notification. They don't appear in the **Alerts** view; when two or more fall in the window, the **Groups** view labels them **Arrival**. | Pick the people. |
+
+Doorbell rings are always an alert. They are never grouped or quietened, and ignore the cooldown. A ring can still be the alert that later detections group under.
+
+Household arrival works best when presence updates quickly, for example with a home zone a little larger than your house. If the camera sees someone before their phone reports them home, that detection is still an alert. After Home Assistant restarts, everyone at home counts as just arrived, so detections stay quiet for the arrival window.
+
+Devices that can't receive notifications, such as a watch, are skipped. To check a phone, look for `notify.mobile_app_<phone name>` under **Developer tools → Actions**.
+
+The blueprint needs no extra helpers: it checks the calendar for earlier alerts.
+
+Example: alerts on two phones, with grouping and arrivals:
+
+- **Phones to alert:** Alex's phone, Sam's phone
+- **Open when tapped:** `/dashboard-cameras/0`
+- **Cooldown per camera:** 5
+- **Quiet period:** 3
+- **People:** `person.alex`, `person.sam`
+- **Arrival window:** 5 (the default)
+
+Alex walks up the driveway, past the front door, and is seen by three cameras in a minute. You get one notification from the first camera. In the card's **Groups** view, the other two detections sit under it. When Sam drives home, the detections in the next 5 minutes are logged as an **Arrival** group with no notification.
+
 ### 4. Add the card to a dashboard
 
 Edit dashboard → **Add card** → search **UniFi Protect Events Card**. To change options, use **Show code editor** in the card dialog, or paste this:
@@ -118,13 +148,15 @@ description: |-
   Time: 14:30:45
 ```
 
+The blueprint also writes `Source:` (the event entity) and, when it sent a phone alert, `Notified: yes`. The card ignores lines it doesn't know.
+
 - `nvr_id` is `config_entry_id(<any UniFi Protect entity>)`
 - `event_id` is the `event_id` attribute of the camera's Smart detection (or Doorbell) event entity
 - The camera name must not contain a comma
 
 ### Advanced: grouping and suppression
 
-The card can also group related events: someone walks past three cameras, and you see one alert instead of three. To use it, your automation decides which event is the alert (`Status: LEAD`) and marks the rest `Status: SUPPRESSED`, adding these lines:
+The card groups related events: someone walks past three cameras, and you see one alert instead of three. The blueprint's **Grouping** and **Household arrival** sections do this for you. If you write your own automation instead, mark the alert `Status: LEAD` and the rest `Status: SUPPRESSED`, adding these lines:
 
 ```
 LeadTime: <start time of the LEAD event, ISO format>
@@ -133,7 +165,7 @@ SuppressReasons: path_grouping,person_arrival   # or none
 
 Reasons the card turns into a group label: `outdoor_activity`, `person_arrival`, `person_departure` and `vehicle_active`. Any other reason is allowed but gets no label.
 
-Suppressed events with the same `LeadTime` appear under their LEAD event in the **Groups** and **All** views. The **Alerts** view shows LEAD events only. The blueprint logs everything as LEAD, so it never groups.
+Suppressed events with the same `LeadTime` appear under their LEAD event in the **Groups** view. The **Alerts** view shows LEAD events only, and **All** lists every event on its own. The blueprint writes these lines for you when grouping or household arrival is on.
 
 ## Troubleshooting
 

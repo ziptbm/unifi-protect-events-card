@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.13.0 — 2026-11-26
+
+Blueprint only; the card is unchanged. Re-import the blueprint to get it. Existing automations keep working, with every new option off.
+
+- Optional phone alerts through the Companion app: camera name, thumbnail, and a dashboard to open on tap. Optional cooldown per camera.
+- Optional grouping: detections within a quiet period of the last alert are logged under it (`path_grouping`) and send no alert.
+- Optional household arrival: detections shortly after a chosen person comes home are logged as `person_arrival` and send no alert.
+- Doorbell rings are always an alert.
+- Needs Home Assistant 2024.10 or later.
+
 ## 1.12.1 — 2026-11-25
 
 - Fix: the date button's text was black on dark themes.

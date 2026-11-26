@@ -11,8 +11,12 @@
  *   person_entities:          # optional; default = every person.* entity, false = off
  *     - person.alex
  *
- * Version: 1.12.1
- * Last Updated: 2026-11-25
+ * Version: 1.13.0
+ * Last Updated: 2026-11-26
+ *
+ * Changes in 1.13.0:
+ * - No card changes. The blueprint gained optional phone alerts, grouping and
+ *   household-arrival handling (see CHANGELOG.md).
  *
  * Changes in 1.12.1:
  * - Fix: date button text was black on dark themes
@@ -1600,4 +1604,4 @@ class CameraEventsCard extends HTMLElement {
 customElements.define('camera-events-card', CameraEventsCard);
 window.customCards = window.customCards || [];
 window.customCards.push({ type: 'camera-events-card', name: 'UniFi Protect Events Card', description: 'UniFi Protect detections with thumbnails, snapshots and video', preview: true });
-console.info('%c CAMERA-EVENTS-CARD %c v1.12.1 ', 'color:white;background:#3498db;font-weight:bold;', 'color:#3498db;background:white;font-weight:bold;');
+console.info('%c CAMERA-EVENTS-CARD %c v1.13.0 ', 'color:white;background:#3498db;font-weight:bold;', 'color:#3498db;background:white;font-weight:bold;');

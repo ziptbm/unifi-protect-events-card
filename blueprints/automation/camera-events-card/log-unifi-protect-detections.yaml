@@ -2,7 +2,9 @@ blueprint:
   name: UniFi Protect Events Card - log detections
   description: >
     Writes each UniFi Protect smart detection (and doorbell ring) to a calendar,
-    in the format the UniFi Protect Events Card reads.
+    in the format the UniFi Protect Events Card reads. It can also send phone
+    alerts, group detections that happen close together, and stay quiet when
+    someone in your household has just come home.
 
 
     **Before you start:** create a calendar with the Local Calendar integration
@@ -15,9 +17,14 @@ blueprint:
     entity if you have a G4/G5 doorbell.
 
 
-    Every event is logged as an alert (`Status: LEAD`). Grouping and suppression
-    are not part of this blueprint; see the README if you want to add them.
+    With only the first section filled in, every detection is logged as an alert
+    (`Status: LEAD`). The optional sections are all off until you set them.
+    Doorbell rings are always logged as an alert, are never grouped or quietened,
+    and ignore the cooldown. A ring can still be the alert that later detections
+    group under.
   domain: automation
+  homeassistant:
+    min_version: "2024.10.0"
   source_url: https://github.com/ziptbm/unifi-protect-events-card/blob/main/blueprints/automation/camera-events-card/log-unifi-protect-detections.yaml
   input:
     detection_entities:
@@ -57,6 +64,94 @@ blueprint:
             - label: Doorbell ring
               value: ring
 
+    alerts:
+      name: Phone alerts (optional)
+      icon: mdi:cellphone-message
+      collapsed: true
+      input:
+        notify_devices:
+          name: Phones to alert
+          description: >
+            Phones with the Home Assistant Companion app. Each alert event
+            (LEAD) sends a notification with the camera name and thumbnail.
+            Devices that can't receive notifications, such as a watch, are
+            skipped. Leave empty for no alerts.
+          default: []
+          selector:
+            device:
+              multiple: true
+              filter:
+                - integration: mobile_app
+        notify_open_path:
+          name: Open when tapped
+          description: >
+            Dashboard path to open when the notification is tapped, for
+            example `/dashboard-cameras/0`. Leave empty to open the app.
+          default: ""
+          selector:
+            text:
+        notify_cooldown:
+          name: Cooldown per camera (minutes)
+          description: >
+            After a camera sends an alert, it won't alert again for this many
+            minutes. Its detections are still logged. 0 turns it off.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 120
+              unit_of_measurement: min
+              mode: box
+
+    grouping:
+      name: Grouping (optional)
+      icon: mdi:format-list-group
+      collapsed: true
+      input:
+        group_minutes:
+          name: Quiet period (minutes)
+          description: >
+            When a detection arrives within this many minutes of the last alert
+            (on any camera), it is logged under that alert instead of as a new
+            one, and sends no phone alert. The card's Groups view shows them
+            together. 0 turns grouping off.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 30
+              unit_of_measurement: min
+              mode: box
+
+    arrival:
+      name: Household arrival (optional)
+      icon: mdi:home-account
+      collapsed: true
+      input:
+        arrival_people:
+          name: People
+          description: >
+            When one of these people has come home in the last few minutes,
+            detections are still logged but not as alerts, and send no phone
+            alert. The card labels them as an arrival. Leave empty to turn this
+            off.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: person
+        arrival_minutes:
+          name: Arrival window (minutes)
+          description: How long after someone comes home their detections stay quiet.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 30
+              unit_of_measurement: min
+              mode: box
+
 mode: queued
 max: 20
 max_exceeded: silent
@@ -72,6 +167,12 @@ triggers:
 variables:
   calendar_entity: !input calendar_entity
   detection_types: !input detection_types
+  notify_devices: !input notify_devices
+  notify_open_path: !input notify_open_path
+  notify_cooldown: !input notify_cooldown
+  group_minutes: !input group_minutes
+  arrival_people: !input arrival_people
+  arrival_minutes: !input arrival_minutes
   event_type: "{{ trigger.to_state.attributes.event_type | default('') }}"
   event_id: "{{ trigger.to_state.attributes.event_id | default('') }}"
   previous_event_id: >-
@@ -94,17 +195,133 @@ conditions:
          and event_id != previous_event_id }}
 
 actions:
+  - variables:
+      start: "{{ now().replace(microsecond=0).isoformat() }}"
+      lookback: >-
+        {{ [group_minutes | int(0), arrival_minutes | int(5), notify_cooldown | int(0), 1] | max }}
+  # Recent events in the calendar tell us about earlier alerts. No helpers needed.
+  - action: calendar.get_events
+    target:
+      entity_id: "{{ calendar_entity }}"
+    data:
+      start_date_time: "{{ (as_datetime(start) - timedelta(minutes=lookback | int)).isoformat() }}"
+      end_date_time: "{{ (as_datetime(start) + timedelta(seconds=1)).isoformat() }}"
+    response_variable: recent
+  - variables:
+      recent_events: >-
+        {% set ns = namespace(items=[]) %}
+        {% set t0 = as_datetime(start) %}
+        {% for e in (recent[calendar_entity].events if calendar_entity in recent else []) %}
+          {% set t = as_datetime(e.start) %}
+          {% if t is not none and t <= t0 %}
+            {% set ns.items = ns.items + [{
+              'start': e.start,
+              'age': (t0 - t).total_seconds(),
+              'lines': (e.description or '').split('\n')}] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.items | sort(attribute='age') | list }}
+      # Start of the newest alert within the quiet period ('' if none).
+      lead_time: >-
+        {% set ns = namespace(v='') %}
+        {% if group_minutes | int(0) > 0 and event_type != 'ring' %}
+          {% for e in recent_events %}
+            {% if ns.v == '' and e.age <= group_minutes | int * 60 and 'Status: LEAD' in e.lines %}
+              {% set ns.v = e.start %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ ns.v }}
+      arriving: >-
+        {% set ns = namespace(v=false) %}
+        {% if event_type != 'ring' %}
+          {% for p in arrival_people %}
+            {% if is_state(p, 'home') and states[p] is not none
+                  and (now() - states[p].last_changed).total_seconds() <= arrival_minutes | int(5) * 60 %}
+              {% set ns.v = true %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ ns.v }}
+      # Detections during one arrival share the first one's LeadTime, so the card
+      # shows them as one group.
+      arrival_lead_time: >-
+        {% set ns = namespace(v='') %}
+        {% for e in recent_events %}
+          {% if ns.v == '' and e.age <= arrival_minutes | int(5) * 60 %}
+            {% set lt = e.lines | select('match', 'LeadTime: ') | first | default('') %}
+            {% set rs = e.lines | select('match', 'SuppressReasons: ') | first | default('') %}
+            {% if lt != '' and 'person_arrival' in rs %}
+              {% set ns.v = lt[10:] | trim %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.v }}
+      status: "{{ 'SUPPRESSED' if arriving or lead_time != '' else 'LEAD' }}"
+      group_time: >-
+        {% if lead_time != '' %}{{ lead_time }}
+        {% elif arriving %}{{ arrival_lead_time if arrival_lead_time != '' else start }}
+        {% endif %}
+      reasons: >-
+        {% set r = [] %}
+        {% if lead_time != '' %}{% set r = r + ['path_grouping'] %}{% endif %}
+        {% if arriving %}{% set r = r + ['person_arrival'] %}{% endif %}
+        {{ r | join(',') }}
+      cooling_down: >-
+        {% set ns = namespace(v=false) %}
+        {% if notify_cooldown | int(0) > 0 and event_type != 'ring' %}
+          {% for e in recent_events %}
+            {% if e.age <= notify_cooldown | int * 60 and ('Camera: ' ~ camera_name) in e.lines
+                  and 'Notified: yes' in e.lines %}
+              {% set ns.v = true %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ ns.v }}
+      # Only devices that can take a push notification. A watch or a device without
+      # one has no notify action, and calling a missing action stops the run.
+      notify_phones: >-
+        {% set capable = integration_entities('mobile_app') | select('match', 'notify\\.')
+           | map('device_id') | list %}
+        {{ (notify_devices | select('in', capable) | list) if capable | count > 0
+           else notify_devices }}
+      notify: "{{ status == 'LEAD' and notify_phones | count > 0 and not cooling_down }}"
+      thumbnail: "/api/unifiprotect/thumbnail/{{ nvr_id }}/{{ event_id }}"
   - action: calendar.create_event
     target:
       entity_id: "{{ calendar_entity }}"
     data:
       summary: "{{ summary }}"
-      location: "/api/unifiprotect/thumbnail/{{ nvr_id }}/{{ event_id }},{{ camera_name }}"
+      location: "{{ thumbnail }},{{ camera_name }}"
       description: |-
-        Status: LEAD
+        Status: {{ status }}
         Camera: {{ camera_name }}
         Detection: {{ summary | lower }}
-        Time: {{ now().strftime('%H:%M:%S') }}
+        Time: {{ as_datetime(start).strftime('%H:%M:%S') }}
         Source: {{ trigger.entity_id }}
-      start_date_time: "{{ now().isoformat() }}"
-      end_date_time: "{{ (now() + timedelta(minutes=1)).isoformat() }}"
+        {%- if status == 'SUPPRESSED' %}
+        LeadTime: {{ group_time }}
+        SuppressReasons: {{ reasons }}
+        {%- endif %}
+        {%- if notify %}
+        Notified: yes
+        {%- endif %}
+      start_date_time: "{{ start }}"
+      end_date_time: "{{ (as_datetime(start) + timedelta(minutes=1)).isoformat() }}"
+  - if:
+      - condition: template
+        value_template: "{{ notify }}"
+    then:
+      - repeat:
+          for_each: "{{ notify_phones }}"
+          sequence:
+            - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+              data:
+                title: "{{ camera_name }}"
+                message: "{{ summary }}"
+                data:
+                  image: "{{ thumbnail }}"
+                  url: "{{ notify_open_path if notify_open_path else '/' }}"
+                  clickAction: "{{ notify_open_path if notify_open_path else '/' }}"
+                  tag: "camera-events-{{ camera_name | slugify }}"
+                  group: camera-events
